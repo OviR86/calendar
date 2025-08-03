@@ -4,7 +4,7 @@ import Image from "next/image";
 import { SignIn } from "@clerk/nextjs";
 import { neobrutalism } from "@clerk/themes";
 
-//test pentru git workflow
+//test pentru git workflow--update 2
 
 export default function LandingPage() {
   return (
