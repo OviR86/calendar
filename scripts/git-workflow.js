@@ -24,12 +24,12 @@ function getGitStatus() {
   }
 }
 
-// Function to generate commit message based on changes
-function generateCommitMessage() {
+// Function to analyze file changes and generate meaningful descriptions
+function analyzeFileChanges() {
   const status = getGitStatus();
 
   if (!status) {
-    return "No changes to commit";
+    return { changes: {}, descriptions: {} };
   }
 
   const lines = status.split("\n").filter((line) => line.trim());
@@ -39,6 +39,7 @@ function generateCommitMessage() {
     deleted: [],
     renamed: [],
   };
+  const descriptions = {};
 
   lines.forEach((line) => {
     const statusCode = line.substring(0, 2).trim();
@@ -46,24 +47,110 @@ function generateCommitMessage() {
 
     if (statusCode === "A" || statusCode === "A ") {
       changes.added.push(fileName);
+      descriptions[fileName] = analyzeNewFile(fileName);
     } else if (statusCode === "M" || statusCode === " M") {
       changes.modified.push(fileName);
+      descriptions[fileName] = analyzeModifiedFile(fileName);
     } else if (statusCode === "D" || statusCode === " D") {
       changes.deleted.push(fileName);
+      descriptions[fileName] = "deleted file";
     } else if (statusCode === "R" || statusCode === "R ") {
       changes.renamed.push(fileName);
+      descriptions[fileName] = "renamed file";
     }
   });
 
-  // Generate descriptive commit message
+  return { changes, descriptions };
+}
+
+// Function to analyze what a new file contains
+function analyzeNewFile(fileName) {
+  try {
+    const content = fs.readFileSync(fileName, "utf8");
+
+    if (fileName.endsWith(".tsx") || fileName.endsWith(".jsx")) {
+      if (
+        content.includes("export default function") ||
+        content.includes("export default class")
+      ) {
+        const componentName = fileName
+          .split("/")
+          .pop()
+          .replace(/\.(tsx|jsx)$/, "");
+        return `new React component: ${componentName}`;
+      }
+      return "new React component";
+    }
+
+    if (fileName.endsWith(".ts") || fileName.endsWith(".js")) {
+      if (fileName.includes("config")) return "new configuration file";
+      if (fileName.includes("script")) return "new utility script";
+      return "new TypeScript/JavaScript file";
+    }
+
+    if (fileName.endsWith(".css")) return "new stylesheet";
+    if (fileName.endsWith(".json")) return "new configuration";
+    if (fileName.endsWith(".md")) return "new documentation";
+
+    return "new file";
+  } catch (error) {
+    return "new file";
+  }
+}
+
+// Function to analyze what changed in a modified file
+function analyzeModifiedFile(fileName) {
+  try {
+    // Get the diff to see what actually changed
+    const diff = execSync(`git diff --no-ext-diff ${fileName}`, {
+      encoding: "utf8",
+    });
+
+    if (fileName.endsWith(".tsx") || fileName.endsWith(".jsx")) {
+      if (diff.includes("className=")) return "update component styling";
+      if (diff.includes("import ")) return "update component imports";
+      if (diff.includes("export default")) return "update component structure";
+      if (diff.includes("//") || diff.includes("/*"))
+        return "update component comments";
+      return "update React component";
+    }
+
+    if (fileName.endsWith(".json")) {
+      if (diff.includes('"dependencies"')) return "update dependencies";
+      if (diff.includes('"scripts"')) return "update npm scripts";
+      return "update configuration";
+    }
+
+    if (fileName.endsWith(".css")) return "update styles";
+    if (fileName.endsWith(".md")) return "update documentation";
+    if (fileName.endsWith(".ts") || fileName.endsWith(".js"))
+      return "update code logic";
+
+    return "update file content";
+  } catch (error) {
+    return "update file";
+  }
+}
+
+// Function to generate commit message based on changes
+function generateCommitMessage() {
+  const { changes, descriptions } = analyzeFileChanges();
+
+  if (Object.keys(changes).length === 0) {
+    return "No changes to commit";
+  }
+
   let message = "";
 
   if (changes.added.length > 0) {
     message += `✨ Add ${changes.added.length} new file${
       changes.added.length > 1 ? "s" : ""
     }`;
-    if (changes.added.length <= 3) {
-      message += `: ${changes.added.join(", ")}`;
+    if (changes.added.length <= 2) {
+      const fileDescriptions = changes.added
+        .map((file) => descriptions[file])
+        .join(", ");
+      message += `: ${fileDescriptions}`;
     }
   }
 
@@ -72,8 +159,11 @@ function generateCommitMessage() {
     message += `🔧 Update ${changes.modified.length} file${
       changes.modified.length > 1 ? "s" : ""
     }`;
-    if (changes.modified.length <= 3) {
-      message += `: ${changes.modified.join(", ")}`;
+    if (changes.modified.length <= 2) {
+      const fileDescriptions = changes.modified
+        .map((file) => descriptions[file])
+        .join(", ");
+      message += `: ${fileDescriptions}`;
     }
   }
 
@@ -82,9 +172,6 @@ function generateCommitMessage() {
     message += `🗑️ Remove ${changes.deleted.length} file${
       changes.deleted.length > 1 ? "s" : ""
     }`;
-    if (changes.deleted.length <= 3) {
-      message += `: ${changes.deleted.join(", ")}`;
-    }
   }
 
   if (changes.renamed.length > 0) {
